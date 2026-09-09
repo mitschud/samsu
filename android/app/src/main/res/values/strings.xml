@@ -22,6 +22,6 @@
     <string name="unroot_reboot">Hold to unroot</string>
     <string name="share_subject">SamSU diagnostics report</string>
     <string name="share_chooser">Share diagnostics report</string>
-    <string name="version_label">1.67</string>
+    <string name="version_label">1.68</string>
     <string name="dashboard_format">&lt;b&gt;KernelSU:&lt;/b&gt; %1$s&lt;br/&gt;&lt;b&gt;Shizuku:&lt;/b&gt; %2$s&lt;br/&gt;&lt;b&gt;Current boot:&lt;/b&gt; %3$s</string>
 </resources>
