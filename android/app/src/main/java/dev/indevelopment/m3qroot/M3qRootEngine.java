@@ -185,6 +185,7 @@ final class M3qRootEngine {
 
         if (useShizuku) {
             payload = stagePayloadForShell(payload);
+            stageKsudForShell(ksud);
             int rootCode = runShizukuTracefsRoot(helper, payload);
             return rootCode == 0 ? activateKernelSu(helper, ksud, true) : rootCode;
         }
@@ -810,10 +811,45 @@ final class M3qRootEngine {
         return reader;
     }
 
+    /** Installed SamSU version name, e.g. "1.66". */
+    private String appVersionName() {
+        try {
+            android.content.pm.PackageInfo info =
+                    context.getPackageManager().getPackageInfo(
+                    context.getPackageName(), 0);
+            return info.versionName != null ? info.versionName : "?";
+        } catch (Exception error) {
+            return "?";
+        }
+    }
+
+    /** Firmware build tag from the running kernel vermagic, e.g.
+     *  "S936BXXUCZZI4" from 6.6.127-android15-8-p33f4ffe-abogkiS936BXXUCZZI4-4k. */
+    private String firmwareTag() {
+        String kernel = System.getProperty("os.version", "");
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("abogki([A-Za-z0-9]+)-[0-9]+k").matcher(kernel);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    /** Short firmware name, e.g. "S936BZZI4" (model + final revision). */
+    private String firmwareShortName() {
+        String tag = firmwareTag();
+        if (tag.isEmpty()) return "";
+        int cut = tag.indexOf("XXU");
+        return cut > 0 ? tag.substring(0, cut) + tag.substring(cut + 4) : tag;
+    }
+
     private void saveRootLog(List<String> lines, int exitCode) {
         File output = lastRootLog();
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                 new FileOutputStream(output, false), StandardCharsets.UTF_8))) {
+            writer.write("samsu_version=" + appVersionName());
+            writer.newLine();
+            writer.write("firmware=" + firmwareTag()
+                    + (firmwareShortName().isEmpty()
+                        ? "" : " (" + firmwareShortName() + ")"));
+            writer.newLine();
             writer.write("boot_id=" + currentBootId());
             writer.newLine();
             writer.write("exit=" + exitCode);
@@ -888,6 +924,35 @@ final class M3qRootEngine {
      * into /data/local/tmp via the Shizuku shell so the helper can dlopen
      * them, mirroring the documented RMG deployment layout.
      */
+    private void stageKsudForShell(File ksud) {
+        if (!ShizukuShell.isRunning() || !ShizukuShell.isGranted()) {
+            log("Shizuku unavailable for KernelSU staging; the daemon "
+                    + "will use its own schedule.");
+            return;
+        }
+        try {
+            Process process = ShizukuShell.exec(new String[]{
+                    "sh", "-c", "cat > " + KSU_LOADER_PATH
+                            + " && chmod 0755 " + KSU_LOADER_PATH},
+                    new String[]{
+                            "PATH=/system/bin:/system/xbin",
+                            "HOME=/data/local/tmp",
+                            "TMPDIR=/data/local/tmp"},
+                    "/data/local/tmp");
+            try (java.io.OutputStream out = process.getOutputStream()) {
+                java.nio.file.Files.copy(ksud.toPath(), out);
+            }
+            int code = process.waitFor();
+            if (code == 0) {
+                log("KernelSU daemon staged to " + KSU_LOADER_PATH);
+            } else {
+                log("KernelSU daemon staging failed code=" + code);
+            }
+        } catch (Exception error) {
+            log("KernelSU daemon staging error: " + error.getMessage());
+        }
+    }
+
     private File stagePayloadForShell(File payload) {
         if (payload.getAbsolutePath().equals(
                 nativeFile(PAYLOAD).getAbsolutePath())) {

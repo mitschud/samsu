@@ -1192,14 +1192,27 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
         try {
-            String text = LogRedactor.redact(readLogTail(file));
-            Intent share = new Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.share_subject))
-                    .putExtra(Intent.EXTRA_TEXT, text);
-            startActivity(Intent.createChooser(share, getString(R.string.share_chooser)));
+            String text = readLogTail(file);
+            String stamp = new java.text.SimpleDateFormat("yyMMdd_HHmmss", Locale.US)
+                    .format(new java.util.Date());
+            String name = "SamSU diagnostics report_" + stamp + ".txt";
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name);
+            values.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
+            android.net.Uri saved = getContentResolver().insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (saved == null) {
+                throw new IOException("MediaStore insert failed");
+            }
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(saved)) {
+                if (out == null) {
+                    throw new IOException("output stream unavailable");
+                }
+                out.write(text.getBytes(StandardCharsets.UTF_8));
+            }
+            append("Diagnostics exported: Downloads/" + name);
         } catch (IOException error) {
-            append("Failed to read log: " + error.getMessage());
+            append("Failed to export log: " + error.getMessage());
         }
     }
 
